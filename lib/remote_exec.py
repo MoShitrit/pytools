@@ -29,20 +29,23 @@ class RemoteExec:
             self.q = Queue(maxsize=self.args.batch)
         self.l_exec = LocalExec()
         self.output = dict()
-        self.user = self.l_exec.run_shell_cmd('whoami')['stdout']
+        if getattr(self.args, 'user'):
+            self.user = self.args.user
+        else:
+            self.user = self.l_exec.run_shell_cmd('whoami')['stdout']
         self.logger.info('Username for SSH connection: {0}'.format(self.user))
-        if self.user != 'root':
-            self.logger.info('Going to prompt for password for SSH connection..')
-            self.passwd = getpass.unix_getpass('Please enter your password for SSH authentication: ')
-            self.ldap_host = self.get_ldap_host()
-            if self.ldap_host:
-                print_func('Verifying credentials..', logger=self.logger)
-                while not self.check_credentials():
-                    self.passwd = getpass.unix_getpass('ERROR: Incorrect password! Please try again: ')
-                print_func('Credentials are valid!', logger=self.logger)
-            else:
-                print_func('No LDAP host was found! The script will continue without validating credentials',
-                           logger=self.logger, level='warn')
+        # if self.user != 'root':
+        self.logger.info('Going to prompt for password for SSH connection..')
+        self.passwd = getpass.unix_getpass('Please enter your password for SSH authentication: ')
+        self.ldap_host = self.get_ldap_host()
+        if self.ldap_host:
+            print_func('Verifying credentials..', logger=self.logger)
+            while not self.check_credentials():
+                self.passwd = getpass.unix_getpass('ERROR: Incorrect password! Please try again: ')
+            print_func('Credentials are valid!', logger=self.logger)
+        else:
+            print_func('No LDAP host was found! The script will continue without validating credentials',
+                       logger=self.logger, level='warn')
 
         if 'batch' not in self.args:
             setattr(self.args, 'batch', 1)
@@ -151,22 +154,22 @@ class RemoteExec:
         try:
             ssh = RemoteExec.set_ssh_client()
             self.logger.info('Connecting to {0} in order to run the command {1}...'.format(node, command))
-            if self.user == 'root':
-                ssh.connect(node)
-            else:
-                ssh.connect(node, username=self.user, password=self.passwd)
+            # if self.user == 'root':
+            #     ssh.connect(node)
+            # else:
+            ssh.connect(node, username=self.user, password=self.passwd)
             channel = ssh.get_transport().open_session()
             channel.get_pty()
             out = channel.makefile()
-            if self.user == 'root':
-                cmd = command
-            else:
-                cmd = 'source /etc/profile; sudo {0}'.format(command)
-            channel.exec_command(cmd)
+            # if self.user == 'root':
+            #     cmd = command
+            # else:
+            #     cmd = 'source /etc/profile; sudo {0}'.format(command)
+            channel.exec_command(command)
             if print_node:
                 self.output[node] = out.readlines()
                 for line in self.output[node]:
-                    print_func('[{0}]{1}{2}'.format(node, ' ' * (12 - len(node)), line.rstrip()), self.logger)
+                    print_func('[{0}]{1} {2}'.format(node, ' ' * (12 - len(node)), line.rstrip()), self.logger)
             elif return_output:
                 return out.readlines()
             else:
@@ -186,6 +189,9 @@ class RemoteExec:
             print_func('[{0}] Node is not reachable! '
                        'SSH failed with error: {1}'.format(node, e.args[1]), self.logger, 'error')
 
+        except paramiko.SSHException as e:
+            print_func('[{0}] SSH failed with error: {1}'.format(node, e.message), self.logger, 'error')
+
     def exec_func_mco(self, mco_host, command, out_file=None):
         """
         :param mco_host:     MCollective host to connect to.
@@ -199,10 +205,10 @@ class RemoteExec:
         try:
             ssh = RemoteExec.set_ssh_client()
             self.logger.info('Command to run on MCollective node {0}: {1}'.format(mco_host, command))
-            if self.user == 'root':
-                ssh.connect(mco_host)
-            else:
-                ssh.connect(mco_host, username=self.user, password=self.passwd)
+            # if self.user == 'root':
+            #     ssh.connect(mco_host)
+            # else:
+            ssh.connect(mco_host, username=self.user, password=self.passwd)
             channel = ssh.get_transport().open_session()
             channel.exec_command(command)
             if out_file:
