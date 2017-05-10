@@ -22,6 +22,7 @@ parser.add_nodes_arg()
 parser.add_batch_args()
 parser.add_argument('--cmd', help='The command to run on remote nodes',
                     required=True)
+parser.add_argument('--user', '-u', help='User for SSH authentication')
 args = parser.generate_args()
 
 # Build the logger
