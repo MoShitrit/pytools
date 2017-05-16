@@ -244,11 +244,11 @@ class RemoteExec:
 
     def copy_file_sftp(self, remote_host, from_path, to_path):
         ssh = RemoteExec.set_ssh_client()
-        if self.user == 'root':
-            ssh.connect(remote_host)
-        else:
-            ssh.connect(remote_host, username=self.user, password=self.passwd)
-            sftp = ssh.open_sftp()
-            sftp.put(from_path, to_path)
-            sftp.close()
-            ssh.close()
+        # if self.user == 'root':
+        #     ssh.connect(remote_host)
+        # else:
+        ssh.connect(remote_host, username=self.user, password=self.passwd)
+        sftp = ssh.open_sftp()
+        sftp.put(from_path, to_path)
+        sftp.close()
+        ssh.close()
