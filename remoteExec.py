@@ -20,8 +20,9 @@ parser = MyParser(description=__doc__)
 parser.add_hosts_arg()
 parser.add_nodes_arg()
 parser.add_batch_args()
-parser.add_argument('--cmd', help='The command to run on remote nodes',
-                    required=True)
+cmd_or_script = parser.add_mutually_exclusive_group(required=True)
+cmd_or_script.add_argument('--cmd', help='The command to run on remote nodes')
+cmd_or_script.add_argument('--script', help='Path to script that will be executed locally on the destination host(s)')
 parser.add_argument('--user', '-u', help='User for SSH authentication')
 args = parser.generate_args()
 
@@ -58,20 +59,21 @@ def generate_nodes_list():
     return nodes_list
 
 
-def iterate_nodes_and_call_exec_func(r_exec, nodes):
+def iterate_nodes_and_call_exec_func(r_exec, nodes, script_src_path=None):
     """
     Get the r_exec object and the list of nodes as arguments.
     Create an additional list called "work" which will append the amount of nodes
     equal to the provided batch argument. If batch_sleep argument was provided,
     it will sleep x seconds between each batch.
     """
+    command = get_command()
     work = list()
     count = 0
     for node in nodes:
         count += 1
         work.append(node)
         if len(work) == int(args.batch):
-            r_exec.exec_func_threading(nodes=work, command=args.cmd)
+            r_exec.exec_func_threading(nodes=work, command=command, script_src_path=script_src_path)
             count = 0
             if args.batch_sleep > 0 and count < (len(nodes) - len(work)):
                 logger.info('*** Sleeping for %d seconds before moving on to next batch ***',
@@ -79,7 +81,42 @@ def iterate_nodes_and_call_exec_func(r_exec, nodes):
                 sleep.sleep_func(args.batch_sleep)
             work = list()
     if len(work) > 0:
-        r_exec.exec_func_threading(nodes=work, command=args.cmd)
+        r_exec.exec_func_threading(nodes=work, command=command)
+
+
+def get_command():
+    """
+    Check which argument was passed, cmd or script.
+    :return: either command to run or the script path on destination node (/tmp/<script_name>) 
+    """
+    if getattr(args, 'script'):
+        return '/tmp/{0}'.format(args.script.split('/')[-1])
+    else:
+        return args.cmd
+
+
+def execute_script(nodes):
+    """
+    First, copy the provided script to the list of nodes (to /tmp path).
+    Then - run the script locally.
+    Eventually - delete the script from /tmp, to cleanup the leftovers.
+    :param nodes: List of nodes to which the script will be copied and on which it will be executed
+    """
+    if confirm('run the script {0} on multiple servers'.format(args.script), wrapper=wrapper,
+               title='running script {0}'.format(args.script)):
+        r_exec = RemoteExec(args=args, wrapper=wrapper)
+        iterate_nodes_and_call_exec_func(r_exec, nodes, script_src_path=args.script)
+
+
+def execute_cmd(nodes):
+    """
+    Call remote_exec function to run the provided cmd on the list of nodes
+    :param nodes: List of nodes on which the shell command will be executed
+    """
+    if confirm('run {0} command on multiple servers'.format(args.cmd), wrapper=wrapper,
+               title='running {0} command'.format(args.cmd)):
+        r_exec = RemoteExec(args=args, wrapper=wrapper)
+        iterate_nodes_and_call_exec_func(r_exec, nodes)
 
 
 def main():
@@ -87,10 +124,12 @@ def main():
         wrapper.init_script('Remote Execution')
         parser.log_args(logger)
         nodes = generate_nodes_list()
-        if confirm('run {0} command on multiple servers'.format(args.cmd), wrapper=wrapper,
-                   title='running {0} command'.format(args.cmd)):
-            r_exec = RemoteExec(args=args, wrapper=wrapper)
-            iterate_nodes_and_call_exec_func(r_exec, nodes)
+
+        # Check which arg was passed, cmd or script, and act accordingly..
+        if getattr(args, 'cmd'):
+            execute_cmd(nodes)
+        else:
+            execute_script(nodes)
 
     except KeyboardInterrupt:
         wrapper.terminate()

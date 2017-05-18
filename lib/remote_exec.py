@@ -110,11 +110,13 @@ class RemoteExec:
                 return False
         return True
 
-    def exec_func_threading(self, nodes, command):
+    def exec_func_threading(self, nodes, command, script_src_path=None):
         """
         :param nodes: list of nodes to execute the command on
         :param command: command to execute
-
+        :param script_src_path: Path on the executing server to a script file that will be copied 
+               to the destination host, executed locally and then removed.
+        
         Run a command on a list of nodes simultaneously.
         Using standard-library modules Queue and Threading, build a queue and put the nodes in it.
         Then build a total number of threads that will match the args.batch size.
@@ -124,21 +126,29 @@ class RemoteExec:
             for node in nodes:
                 self.q.put(node)
             for i in range(int(self.args.batch)):
-                t = Thread(target=self.worker, args=(command,))
+                t = Thread(target=self.worker, args=(command, script_src_path))
                 t.daemon = True
                 t.start()
             self.q.join()
         except KeyboardInterrupt:
             self.wrapper.terminate()
 
-    def worker(self, command):
+    def worker(self, command, script_src_path=None):
         """
         :param command: command to run
-
+        :param script_src_path: Path on the executing server to a script file that will be copied 
+               to the destination host, executed locally and then removed.
         Call the exec_func as long as the queue is not empty.
         """
         while self.q.not_empty:
-            self.exec_func(self.q.get(), command)
+            node = self.q.get()
+            if script_src_path:
+                self.copy_file_sftp(remote_host=node, from_path=script_src_path, to_path=command)
+                # Make sure the script has execute permissions on the destination server
+                self.exec_func(node, 'chmod +x {0}'.format(command))
+            self.exec_func(node, command)
+            if script_src_path:
+                self.exec_func(node, 'rm -f {0}'.format(command))
             self.q.task_done()
 
     def exec_func(self, node, command, print_node=True, return_output=False):
@@ -153,19 +163,13 @@ class RemoteExec:
         """
         try:
             ssh = RemoteExec.set_ssh_client()
-            self.logger.info('Connecting to {0} in order to run the command {1}...'.format(node, command))
-            # if self.user == 'root':
-            #     ssh.connect(node)
-            # else:
+            cmd = 'source /etc/profile; sudo {0}'.format(command)
+            self.logger.info('Connecting to {0} in order to run the command {1}...'.format(node, cmd))
             ssh.connect(node, username=self.user, password=self.passwd)
             channel = ssh.get_transport().open_session()
             channel.get_pty()
             out = channel.makefile()
-            # if self.user == 'root':
-            #     cmd = command
-            # else:
-            #     cmd = 'source /etc/profile; sudo {0}'.format(command)
-            channel.exec_command(command)
+            channel.exec_command(cmd)
             if print_node:
                 self.output[node] = out.readlines()
                 for line in self.output[node]:
@@ -182,7 +186,8 @@ class RemoteExec:
 
         except paramiko.AuthenticationException:
             print_func('[{0}] SSH Failed with Authentication Exception! '
-                       'Make sure you have access either with your credentials or with root'.format(node),
+                       'Make sure you have typed in the correct password '
+                       'and that you have proper access to the destination server!'.format(node),
                        self.logger, 'error')
 
         except socket.error as e:
@@ -205,9 +210,6 @@ class RemoteExec:
         try:
             ssh = RemoteExec.set_ssh_client()
             self.logger.info('Command to run on MCollective node {0}: {1}'.format(mco_host, command))
-            # if self.user == 'root':
-            #     ssh.connect(mco_host)
-            # else:
             ssh.connect(mco_host, username=self.user, password=self.passwd)
             channel = ssh.get_transport().open_session()
             channel.exec_command(command)
@@ -244,9 +246,6 @@ class RemoteExec:
 
     def copy_file_sftp(self, remote_host, from_path, to_path):
         ssh = RemoteExec.set_ssh_client()
-        # if self.user == 'root':
-        #     ssh.connect(remote_host)
-        # else:
         ssh.connect(remote_host, username=self.user, password=self.passwd)
         sftp = ssh.open_sftp()
         sftp.put(from_path, to_path)
