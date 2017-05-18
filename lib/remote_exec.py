@@ -145,7 +145,8 @@ class RemoteExec:
             if script_src_path:
                 self.copy_file_sftp(remote_host=node, from_path=script_src_path, to_path=command)
                 # Make sure the script has execute permissions on the destination server
-                self.exec_func(node, 'chmod +x {0}'.format(command))
+                if not self.exec_func(node, 'chmod +x {0}'.format(command)):
+                    self.q.task_done()
             self.exec_func(node, command)
             if script_src_path:
                 self.exec_func(node, 'rm -f {0}'.format(command))
@@ -189,13 +190,16 @@ class RemoteExec:
                        'Make sure you have typed in the correct password '
                        'and that you have proper access to the destination server!'.format(node),
                        self.logger, 'error')
+            return False
 
         except socket.error as e:
             print_func('[{0}] Node is not reachable! '
                        'SSH failed with error: {1}'.format(node, e.args[1]), self.logger, 'error')
+            return False
 
         except paramiko.SSHException as e:
             print_func('[{0}] SSH failed with error: {1}'.format(node, e.message), self.logger, 'error')
+            return False
 
     def exec_func_mco(self, mco_host, command, out_file=None):
         """
@@ -245,9 +249,12 @@ class RemoteExec:
                        'SSH failed with error: {1}'.format(mco_host, e.args[1]), self.logger, 'error')
 
     def copy_file_sftp(self, remote_host, from_path, to_path):
-        ssh = RemoteExec.set_ssh_client()
-        ssh.connect(remote_host, username=self.user, password=self.passwd)
-        sftp = ssh.open_sftp()
-        sftp.put(from_path, to_path)
-        sftp.close()
-        ssh.close()
+        try:
+            ssh = RemoteExec.set_ssh_client()
+            ssh.connect(remote_host, username=self.user, password=self.passwd)
+            sftp = ssh.open_sftp()
+            sftp.put(from_path, to_path)
+            sftp.close()
+            ssh.close()
+        except IOError as e:
+            print_func('[{0}] File copy failed with error: {1}'.format(remote_host, e.args[1]), self.logger, 'error')
