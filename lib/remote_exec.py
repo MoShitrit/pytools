@@ -146,7 +146,7 @@ class RemoteExec:
                 self.copy_file_sftp(remote_host=node, from_path=script_src_path, to_path=command)
                 # Make sure the script has execute permissions on the destination server
                 if not self.exec_func(node, 'chmod +x {0}'.format(command)):
-                    self.q.task_done()
+                    continue
             self.exec_func(node, command)
             if script_src_path:
                 self.exec_func(node, 'rm -f {0}'.format(command))
