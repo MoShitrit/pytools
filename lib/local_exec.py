@@ -47,15 +47,9 @@ class LocalExec:
         :param package: name of package(s) to install
         :return: True if succeeded, False if not
         """
-        if self.logger:
-            self.logger.info('Going to install package(s): {0}'.format(package))
         if self.distro in ['centos', 'redhat']:
-            if self.logger:
-                self.logger.debug('OS distro is {0}, going to use yum package manager for installation'.format(self.distro))
             output = self.run_shell_cmd('sudo yum install -y {0}'.format(package))
         elif self.distro in ['Ubuntu', 'Debian']:
-            if self.logger:
-                self.logger.debug('OS distro is {0}, going to use apt package manager for installation'.format(self.distro))
             output = self.run_shell_cmd('sudo apt-get install -y {0}'.format(package))
         else:
             if self.logger:
