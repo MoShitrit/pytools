@@ -19,7 +19,7 @@ __creation_date__ = '8/9/16'
 
 class Slack:
     def __init__(self, logger, channel='#some_channel', username='some_username',
-                 script_user=None, l_exec=None, discover=None):
+                 script_user=None, l_exec=None, discover=None, proxy=False, webhook=None):
         self.logger = logger
         self.channel = channel
         self.username = username
@@ -33,8 +33,10 @@ class Slack:
             self.discover = Discovery(logger=self.logger, l_exec=self.l_exec)
         self.script_user = script_user
         self.no_exceptions = True
-        self.proxy = self.get_proxy()
-        self.set_proxies()
+        if proxy:
+            self.proxy = self.get_proxy()
+            self.set_proxies()
+        self.url = webhook
 
     def get_proxy(self):
         """
@@ -42,7 +44,7 @@ class Slack:
         :return: proxy
         """
         self.logger.info('Going to find which proxy server to use for Slack')
-        hostname = socket.gethostname()
+        # hostname = socket.gethostname()
         # Implement Proxy fetching method here
         proxy = 'foo'
         self.logger.info('Proxy server to use: {0}'.format(proxy))
@@ -54,12 +56,11 @@ class Slack:
         opener = urllib2.build_opener(proxies)
         urllib2.install_opener(opener)
 
-    def send_alert(self, message, url='Slack web hook URL'):
+    def send_alert(self, message):
         """
         Using urllib, send a POST message to Slack WebHook integration.
         The request will use a Proxy server that is taken from zoom using get_proxy method.
         :param message: Message that will be sent to Slack
-        :param url: Slack web hook URL
         """
         if self.no_exceptions:
             try:
@@ -69,8 +70,8 @@ class Slack:
                 params = urllib.urlencode(payload)
                 self.logger.info('Going to send a Slack trap with following data:\n'
                                  '\t\t\t       URL: {0}\n'
-                                 '\t\t\t       Payload: {1}'.format(url, payload))
-                r = urllib2.urlopen(url, params)
+                                 '\t\t\t       Payload: {1}'.format(self.url, payload))
+                r = urllib2.urlopen(self.url, params)
                 self.logger.info('Response code and text from Slack: {0} {1}'.format(r.code, r.read()))
 
             except urllib2.URLError as e:
